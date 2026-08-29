@@ -63,3 +63,5 @@ fisico y de negocio, TODA fila debe cumplir:
 # lazy=True. Si el lote no cumple el contrato, el pipeline se detiene con
 # un reporte de TODAS las filas y columnas que fallaron -- no entrena con
 # basura ni una sola vez.
+
+## MAE haciendo pruebas es igual a 55 KWh
