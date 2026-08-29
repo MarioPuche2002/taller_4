@@ -1,67 +1,64 @@
 # Taller Semana 4 — El guardia que faltaba 🛡️
 
-**Empieza leyendo [`ENUNCIADO_TALLER.md`](ENUNCIADO_TALLER.md).**
+Este repositorio implementa un pipeline de Machine Learning robusto para predecir el consumo energético de una red de bodegas (`consumo_kwh`), incorporando un contrato de datos estricto mediante **Pandera** para evitar el entrenamiento con datos corruptos, incompletos o fuera de rango.
 
-## Qué hay aquí
-```
+## Estructura del Proyecto
+
 contrato-datos-ml/
-├── ENUNCIADO_TALLER.md   <- LÉEME PRIMERO
-├── data/sensores.csv     <- los datos (una muestra de la red de bodegas)
-├── src/entrenar.py       <- el pipeline del analista: entrena pero NO valida nada
+├── ENUNCIADO_TALLER.md  
+├── data/
+│   ├── sensores.csv    
+│   └── sensores_corruptos.csv 
+├── src/
+│   ├── schema.py        
+│   ├── entrenar.py       
+│   └── romper_datos.py  
 ├── requirements.txt
 └── README.md
-```
 
-## Arranque
+## Requisitos y Configuración
+
 ```bash
 python -m venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\Activate.ps1
+source .venv/bin/activate        # En Windows: .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-python src/entrenar.py           # corre el pipeline actual (sin validación)
+cd src
+python entrenar.py
+python romper_datos.py
 ```
 
-## Tu trabajo (resumen — el detalle está en el ENUNCIADO)
-3. Mete el guardia en `cargar()` dentro de `entrenar.py`.
-4. Crea `src/romper_datos.py`: corrompe los datos a propósito y demuestra que el contrato los atrapa.
-5. Documenta en tu README y trabaja con ≥5 commits.
+---
 
-El profesor evaluará tu contrato contra un lote real del proveedor que no has visto.
+## El Contrato de Datos (`src/schema.py`)
 
-**Fase 1 — Conocer los datos y su contrato.**
+Se define un esquema formal con `pandera` que valida rigurosamente cada lote de datos antes de permitir que llegue al modelo de regresión lineal. Las reglas en el guardia son:
 
-Cada fila de `sensores.csv` es la lectura de UNA bodega en UN dia. Para que
-el pipeline de consumo energetico entrene con datos que tienen sentido
-fisico y de negocio, TODA fila debe cumplir:
+| Columna | Tipo | Regla | Justificación |
+| --- | --- | --- | --- |
+| `fecha` | String | Formato `AAAA-MM-DD`, no nula | Indispensable para mantener la trazabilidad temporal. |
+| `bodega_id` | Categoría | Valores permitidos: `BOG-01`, `BAQ-04`, `CAL-03`, `MED-02`, no nula | Rechaza bodegas fantasma o errores tipográficos del proveedor. |
+| `temperatura_c` | Float | Rango entre `-30` y `45`, no nula | Acota la realidad física de la red de frío y atrapa sensores dañados (ej. valores de `999`). |
+| `humedad_pct` | Float | Rango entre `0` y `100`, no nula | Limita la métrica estrictamente a porcentajes válidos. |
+| `ocupacion_pct` | Float | Rango entre `0` y `100`, no nula | Garantiza coherencia en la capacidad de almacenamiento. |
+| `alertas_dia` | Float / Int | Rango entre `0` y `50`, no nula | Previene conteos negativos absurdos y establece un techo operativo realista. |
+| `consumo_kwh` | Float | Mayor a `0` y hasta `10000`, no nula | Variable objetivo del modelo; siempre debe reflejar un consumo positivo. |
 
-- fecha
-    Texto con formato AAAA-MM-DD. Nunca debe estár vacia (sin fecha no hay lectura).
+La validación utiliza `lazy=True`. Esto significa que si un lote presenta múltiples fallos, el script no se detiene en el primer error, sino que recopila un reporte consolidado con todas las filas, columnas y valores problemáticos.
+---
 
-- bodega_id
-    Texto categorico. Solo puede ser una de las bodegas que SI existen hoy
-    en la red: BOG-01, BAQ-04, CAL-03, MED-02. Nunca debe estár vacia.
+## Prueba de Corrupción (`src/romper_datos.py`)
 
-- temperatura_c
-    Numero decimal, en grados Celsius. Una bodega de red de frio se mueve en un rango  entre -30C y 45C  Un valor por ejemplo de 999 de un (sensor danado) queda claramente afuera. Nunca debe estár vacia.
+Para verificar la efectividad de la validación, el script `romper_datos.py` inyecta a propósito **5 anomalías críticas** en distintas filas de `sensores.csv`:
 
-- humedad_pct
-    Numero, en porcentaje. Por definicion de porcentaje, entre 0 y 100.Nunca debe estár vacia.
+1. **Fuera de rango:** `temperatura_c = 999` (Fila 0).
+2. **Categoría inválida:** `bodega_id = "XXX-99"` (Fila 5).
+3. **Nulo silencioso:** `alertas_dia = NaN` (Fila 10).
+4. **Error de tipado:** `consumo_kwh = "mil doscientos"` (Fila 15).
+5. **Fuera de rango superior:** `humedad_pct = 150` (Fila 20).
+---
 
-- ocupacion_pct
-    Numero, en porcentaje. Igual que humedad: entre 0 y 100. Nunca debe estár vacia.
+## Análisis Técnico: El Límite del Contrato (Unidades y Escalas)
 
-- alertas_dia
-    Numero entero, conteo de alertas del dia. No puede ser negativo (no
-    existen "-2 alertas"). Se acota a 50. Nunca debe estár vacia.
+> **¿Qué pasaría si el proveedor envía la temperatura en Fahrenheit en lugar de Celsius?**
 
-- consumo_kwh
-    Numero, el consumo energetico del dia en kWh , es la variable objetivo
-    del modelo. Debe ser positiva.
-
-**Fase 3 — Conocer los datos y su contrato.**
-
-# # Antes de devolver el DataFrame, lo pasa por el contrato de pandera (src/schema.py) con
-# lazy=True. Si el lote no cumple el contrato, el pipeline se detiene con
-# un reporte de TODAS las filas y columnas que fallaron -- no entrena con
-# basura ni una sola vez.
-
-## MAE haciendo pruebas es igual a 55 KWh
+El contrato actual **no detectaría** este error por sí solo. El esquema valida que `temperatura_c` esté `in_range(-30, 45)`. Si una lectura real en Fahrenheit (por ejemplo, `40 °F`) se interpreta numéricamente como Celsius, pero no es la unidad correcta o la escala correcta.
