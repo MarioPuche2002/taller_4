@@ -21,7 +21,6 @@ python src/entrenar.py           # corre el pipeline actual (sin validación)
 ```
 
 ## Tu trabajo (resumen — el detalle está en el ENUNCIADO)
-2. Escríbelo en `src/schema.py` con pandera.
 3. Mete el guardia en `cargar()` dentro de `entrenar.py`.
 4. Crea `src/romper_datos.py`: corrompe los datos a propósito y demuestra que el contrato los atrapa.
 5. Documenta en tu README y trabaja con ≥5 commits.
@@ -57,3 +56,10 @@ fisico y de negocio, TODA fila debe cumplir:
 - consumo_kwh
     Numero, el consumo energetico del dia en kWh , es la variable objetivo
     del modelo. Debe ser positiva.
+
+**Fase 3 — Conocer los datos y su contrato.**
+
+# # Antes de devolver el DataFrame, lo pasa por el contrato de pandera (src/schema.py) con
+# lazy=True. Si el lote no cumple el contrato, el pipeline se detiene con
+# un reporte de TODAS las filas y columnas que fallaron -- no entrena con
+# basura ni una sola vez.
